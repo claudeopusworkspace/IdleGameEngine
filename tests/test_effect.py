@@ -98,6 +98,41 @@ def test_synergy():
     assert eff.resolve(state) == pytest.approx(0.03)  # 3 mines * 0.01
 
 
+def test_per_count_exponential_count_zero():
+    state = _make_state()
+    state.elements["farm"].count = 0
+    eff = Effect.per_count_exponential("farm", EffectType.PRODUCTION_MULT, "gold", 1.05)
+    assert eff.resolve(state) == pytest.approx(1.0)  # 1.05^0 = 1.0
+
+
+def test_per_count_exponential_count_one():
+    state = _make_state()
+    state.elements["farm"].count = 1
+    eff = Effect.per_count_exponential("farm", EffectType.PRODUCTION_MULT, "gold", 1.05)
+    assert eff.resolve(state) == pytest.approx(1.05)
+
+
+def test_per_count_exponential_count_three():
+    state = _make_state()
+    state.elements["farm"].count = 3
+    eff = Effect.per_count_exponential("farm", EffectType.PRODUCTION_MULT, "gold", 1.05)
+    assert eff.resolve(state) == pytest.approx(1.05**3)
+
+
+def test_per_count_exponential_global_mult():
+    state = _make_state()
+    state.elements["farm"].count = 2
+    eff = Effect.per_count_exponential("farm", EffectType.GLOBAL_MULT, "gold", 1.10)
+    assert eff.resolve(state) == pytest.approx(1.10**2)
+
+
+def test_per_count_tag():
+    """per_count() tags the EffectDef for validation detection."""
+    eff = Effect.per_count("farm", EffectType.PRODUCTION_MULT, "gold", 1.05)
+    assert getattr(eff, "_created_by", None) == "per_count"
+    assert getattr(eff, "_per_unit_value", None) == 1.05
+
+
 def test_default_phase_mapping():
     # Verify all EffectTypes have a default phase
     for et in EffectType:

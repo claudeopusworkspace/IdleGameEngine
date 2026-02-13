@@ -98,6 +98,30 @@ class Effect:
         def _value(state: GameState) -> float:
             return state.element_count(_element) * _per_unit
 
+        eff = EffectDef(type=type, target=target, value=_value, condition=condition)
+        eff._created_by = "per_count"
+        eff._per_unit_value = per_unit
+        return eff
+
+    @staticmethod
+    def per_count_exponential(
+        element: str,
+        type: EffectType,
+        target: str,
+        base: float,
+        condition: Requirement | None = None,
+    ) -> EffectDef:
+        """Multiplier that compounds exponentially: base^count.
+
+        Use this instead of per_count() for PRODUCTION_MULT and GLOBAL_MULT effects.
+        Example: base=1.05 gives 1.05x at count=1, 1.1025x at count=2, etc.
+        """
+        _element = element
+        _base = base
+
+        def _value(state: GameState) -> float:
+            return _base ** state.element_count(_element)
+
         return EffectDef(type=type, target=target, value=_value, condition=condition)
 
     @staticmethod

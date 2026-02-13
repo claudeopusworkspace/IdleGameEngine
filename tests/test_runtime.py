@@ -1,4 +1,6 @@
 """Tests for runtime module."""
+import warnings
+
 import pytest
 
 from idleengine.cost_scaling import CostScaling
@@ -254,3 +256,67 @@ def test_invalid_definition():
     )
     with pytest.raises(ValueError, match="Invalid GameDefinition"):
         GameRuntime(defn)
+
+
+def test_validate_warns_per_count_production_mult():
+    """per_count() + PRODUCTION_MULT should emit a warning during validation."""
+    defn = GameDefinition(
+        config=GameConfig(name="Test"),
+        currencies=[CurrencyDef("gold")],
+        elements=[
+            ElementDef(
+                "boost",
+                effects=[
+                    Effect.per_count("boost", EffectType.PRODUCTION_MULT, "gold", 1.05),
+                ],
+            ),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        defn.validate()
+    assert len(w) == 1
+    assert "per_count()" in str(w[0].message)
+    assert "PRODUCTION_MULT" in str(w[0].message)
+    assert "per_count_exponential()" in str(w[0].message)
+
+
+def test_validate_warns_per_count_global_mult():
+    """per_count() + GLOBAL_MULT should also emit a warning."""
+    defn = GameDefinition(
+        config=GameConfig(name="Test"),
+        currencies=[CurrencyDef("gold")],
+        elements=[
+            ElementDef(
+                "global_boost",
+                effects=[
+                    Effect.per_count("global_boost", EffectType.GLOBAL_MULT, "gold", 1.10),
+                ],
+            ),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        defn.validate()
+    assert len(w) == 1
+    assert "GLOBAL_MULT" in str(w[0].message)
+
+
+def test_validate_no_warning_per_count_flat():
+    """per_count() + PRODUCTION_FLAT should NOT warn (this is the normal use)."""
+    defn = GameDefinition(
+        config=GameConfig(name="Test"),
+        currencies=[CurrencyDef("gold")],
+        elements=[
+            ElementDef(
+                "miner",
+                effects=[
+                    Effect.per_count("miner", EffectType.PRODUCTION_FLAT, "gold", 5.0),
+                ],
+            ),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        defn.validate()
+    assert len(w) == 0

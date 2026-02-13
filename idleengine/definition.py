@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 from idleengine.currency import CurrencyDef
@@ -156,5 +157,28 @@ class GameDefinition:
                         errors.append(
                             f"PrestigeLayer {p.id!r} resets unknown element {eid!r}"
                         )
+
+        # Warn about per_count() used with multiplicative effect types
+        from idleengine.effect import EffectType
+
+        for e in self.elements:
+            for eff in e.effects:
+                if (
+                    getattr(eff, "_created_by", None) == "per_count"
+                    and eff.type
+                    in (EffectType.PRODUCTION_MULT, EffectType.GLOBAL_MULT)
+                ):
+                    per_unit = getattr(eff, "_per_unit_value", None)
+                    val_at_2 = f"{2 * per_unit}" if per_unit is not None else "?"
+                    warnings.warn(
+                        f"Element {e.id!r} uses per_count() with {eff.type.name} on "
+                        f"{eff.target!r}. This gives linear multiplication "
+                        f"(count * per_unit), not exponential (per_unit^count). "
+                        f"At count=2, the multiplier will be 2*per_unit = {val_at_2}, "
+                        f"which likely doubles production. "
+                        f"Consider using Effect.per_count_exponential() for "
+                        f"compounding multipliers.",
+                        stacklevel=2,
+                    )
 
         return errors

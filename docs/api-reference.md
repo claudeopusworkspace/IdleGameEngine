@@ -61,6 +61,7 @@ All are classmethods returning a `CostScaling` instance.
 ### `Effect` (convenience constructors)
 
 - `Effect.per_count(element, type, target, per_unit, condition=None)` — value = `element_count * per_unit`
+- `Effect.per_count_exponential(element, type, target, base, condition=None)` — value = `base ^ element_count` (use for PRODUCTION_MULT / GLOBAL_MULT)
 - `Effect.static(type, target, value, condition=None)` — constant value
 - `Effect.synergy(source, type, target, per_unit, condition=None)` — value = `source_count * per_unit`
 

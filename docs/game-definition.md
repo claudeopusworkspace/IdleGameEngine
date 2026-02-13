@@ -121,12 +121,17 @@ Where:
 # Each miner produces 2 gold/sec (scales with count)
 Effect.per_count("miner", EffectType.PRODUCTION_FLAT, "gold", 2.0)
 
+# Compounding multiplier: 1.05^count (1.05x, 1.1025x, 1.1576x, ...)
+Effect.per_count_exponential("forge", EffectType.PRODUCTION_MULT, "gold", 1.05)
+
 # Flat x2 multiplier
 Effect.static(EffectType.PRODUCTION_MULT, "gold", 2.0)
 
 # +1% gold/sec per farm owned (synergy between elements)
 Effect.synergy("farm", EffectType.PRODUCTION_ADD_PCT, "gold", 0.01)
 ```
+
+> **Warning:** Do not use `per_count()` with `PRODUCTION_MULT` or `GLOBAL_MULT`. It gives linear scaling (`count * per_unit`), which at count=2 doubles production instead of giving a 5% compounding boost. Use `per_count_exponential()` for multiplicative effects. See [Common Pitfalls](common-pitfalls.md) for details.
 
 ### Dynamic Values
 

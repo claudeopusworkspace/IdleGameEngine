@@ -206,6 +206,42 @@ terminal = Terminal.any(
 )
 ```
 
+## Interpreting Strategy Results: Human Speed Multiplier
+
+Built-in strategies do **not** model human intelligence. Real players complete games significantly faster than `GreedyCheapest` because they:
+
+1. Recognize high-ROI purchases that GreedyCheapest misses (it always buys the cheapest available)
+2. Plan ahead and save for expensive-but-powerful items
+3. Develop intuition for which multipliers compound best
+
+Across multiple prototype games, human players consistently complete **2-3x faster** than GreedyCheapest simulations. Treat GreedyCheapest as a conservative lower bound on player skill.
+
+**Practical guidance for pacing bounds:**
+
+- If you want at least 8 hours of human gameplay, set your `PacingBound` minimum to ~16-20 hours for GreedyCheapest
+- If you want the game completable in 4 hours by humans, set the maximum to ~8-12 hours for GreedyCheapest
+
+**Test with multiple strategies** to bracket human performance:
+
+```python
+# Lower bound (worst player): GreedyCheapest
+sim_cheap = Simulation(definition=defn, strategy=GreedyCheapest(...), terminal=terminal)
+
+# Better approximation: GreedyROI
+strategy_roi = GreedyROI(click_profile=ClickProfile(targets={"gold": 5.0}))
+sim_roi = Simulation(definition=defn, strategy=strategy_roi, terminal=terminal)
+strategy_roi.runtime = sim_roi.runtime
+
+# Human performance is likely somewhere between GreedyROI and 2x faster than GreedyROI
+```
+
+| Strategy | Relative Speed | Models |
+|---|---|---|
+| `GreedyCheapest` | 1x (baseline) | Least skilled player |
+| `GreedyROI` | ~1.5-2x faster | Moderately skilled player |
+| `SaveForBest` | ~2-3x faster | Patient, planning player |
+| Real human | ~2-3x faster than GreedyCheapest | Varies widely |
+
 ## Pacing Bounds
 
 Pacing bounds are pass/fail checks declared in your game definition. The simulation evaluates them and reports results.

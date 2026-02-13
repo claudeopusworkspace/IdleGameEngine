@@ -501,6 +501,8 @@ Strategy (interface):
 **Custom** — Accepts a callable for each of the three interface methods.
 - The escape hatch for testing specific hypotheses.
 
+**Human Speed Multiplier:** Across multiple prototyped games, human players consistently complete 2-3x faster than GreedyCheapest simulations. This is because humans recognize high-ROI purchases, plan ahead, and develop intuition for compounding multipliers. Treat GreedyCheapest as a conservative lower bound. When setting PacingBound minimums, multiply the desired minimum human play time by 2-3 to get the simulation target. Test with multiple strategies (GreedyCheapest AND GreedyROI at minimum) to bracket human performance.
+
 **ClickProfile** helper (used by strategies for click modeling):
 ```python
 ClickProfile(

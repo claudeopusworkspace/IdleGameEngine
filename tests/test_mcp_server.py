@@ -154,6 +154,14 @@ class TestPurchase:
         assert result["success"] is True
         assert result["new_count"] == 1
 
+    def test_rates_update_immediately(self):
+        """Rates should reflect the purchase without needing a wait() first."""
+        holder = _make_holder()
+        _tool_purchase(holder, "miner")
+        state = _tool_get_game_state(holder)
+        # 1 miner producing 1.0 gold/sec — rate should already be visible
+        assert state["currencies"]["gold"]["rate"] == 1.0
+
     def test_cannot_afford(self):
         holder = _make_holder()
         # Spend all gold buying miners (100 gold, 10 per miner = 10 miners)

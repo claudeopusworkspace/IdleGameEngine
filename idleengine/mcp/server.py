@@ -166,6 +166,8 @@ def _tool_purchase(holder: _GameHolder, element_id: str) -> dict[str, Any]:
 
     success = holder.runtime.try_purchase(element_id)
     if success:
+        # Force rate recomputation so subsequent queries see updated rates
+        holder.runtime.tick(0)
         new_state = holder.runtime.get_state()
         return {
             "success": True,

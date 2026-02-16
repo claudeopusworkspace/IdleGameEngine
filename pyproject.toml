@@ -24,7 +24,8 @@ classifiers = [
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
-dev = ["pytest>=7.0", "matplotlib>=3.7"]
+mcp = ["mcp>=1.0"]
+dev = ["pytest>=7.0", "matplotlib>=3.7", "mcp>=1.0"]
 
 [project.scripts]
 idleengine = "idleengine.cli:main"

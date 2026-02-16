@@ -24,6 +24,7 @@ class _GameHolder:
     definition: GameDefinition
     runtime: GameRuntime
     _milestones_seen: set[str] = field(default_factory=set)
+    _click_rates: dict[str, float] = field(default_factory=dict)
 
 
 def _round_cost(cost: dict[str, float]) -> dict[str, float]:
@@ -80,7 +81,7 @@ def _tool_get_game_state(holder: _GameHolder) -> dict[str, Any]:
             "available": es.available,
             "affordable": es.affordable,
         }
-    return {
+    result: dict[str, Any] = {
         "time_elapsed": round(state.time_elapsed, 2),
         "currencies": currencies,
         "elements": elements,
@@ -88,6 +89,9 @@ def _tool_get_game_state(holder: _GameHolder) -> dict[str, Any]:
         "prestige_counts": dict(state.prestige_counts),
         "run_number": state.run_number,
     }
+    if holder._click_rates:
+        result["active_click_rates"] = dict(holder._click_rates)
+    return result
 
 
 def _tool_get_available_purchases(holder: _GameHolder) -> dict[str, Any]:
@@ -195,6 +199,28 @@ def _tool_click(
     }
 
 
+def _tool_set_click_rate(
+    holder: _GameHolder, target: str, cps: float
+) -> dict[str, Any]:
+    if cps < 0:
+        return {"error": "Clicks per second cannot be negative"}
+
+    ct = holder.definition.get_click_target(target)
+    if ct is None:
+        return {"error": f"Unknown click target: {target!r}"}
+
+    if cps == 0:
+        holder._click_rates.pop(target, None)
+    else:
+        holder._click_rates[target] = cps
+
+    return {
+        "target": target,
+        "cps": cps,
+        "active_click_rates": dict(holder._click_rates),
+    }
+
+
 def _tool_wait(holder: _GameHolder, seconds: float) -> dict[str, Any]:
     if seconds <= 0:
         return {"error": "Seconds must be positive"}
@@ -204,11 +230,16 @@ def _tool_wait(holder: _GameHolder, seconds: float) -> dict[str, Any]:
     state = holder.runtime.get_state()
     milestones_before = set(state.milestones_reached.keys())
 
-    # Subdivide into 1-second ticks
+    # Subdivide into 1-second ticks, processing clicks each tick
     remaining = seconds
     while remaining > 0:
         dt = min(1.0, remaining)
         holder.runtime.tick(dt)
+        for click_target, cps in holder._click_rates.items():
+            clicks_this_tick = cps * dt
+            whole_clicks = int(clicks_this_tick)
+            for _ in range(whole_clicks):
+                holder.runtime.process_click(click_target)
         remaining -= dt
 
     milestones_after = set(state.milestones_reached.keys())
@@ -254,6 +285,7 @@ def _tool_prestige(holder: _GameHolder, layer_id: str) -> dict[str, Any]:
 def _tool_new_game(holder: _GameHolder) -> dict[str, Any]:
     holder.runtime = GameRuntime(holder.definition)
     holder._milestones_seen = set()
+    holder._click_rates = {}
     return {"success": True, "message": "Game reset to initial state"}
 
 
@@ -302,8 +334,13 @@ def create_server(definition: GameDefinition) -> FastMCP:
         return _tool_click(holder, target, count)
 
     @mcp.tool()
+    def set_click_rate(target: str, cps: float) -> dict[str, Any]:
+        """Set automatic clicks per second on a target during wait(). Set cps=0 to stop clicking."""
+        return _tool_set_click_rate(holder, target, cps)
+
+    @mcp.tool()
     def wait(seconds: float) -> dict[str, Any]:
-        """Advance game time by the given seconds (max 86400). Time is subdivided into 1s ticks."""
+        """Advance game time by the given seconds (max 86400). Time is subdivided into 1s ticks. Active click rates (from set_click_rate) are applied each tick."""
         return _tool_wait(holder, seconds)
 
     @mcp.tool()

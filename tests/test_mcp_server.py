@@ -22,6 +22,7 @@ from idleengine.mcp.server import (
     _tool_new_game,
     _tool_prestige,
     _tool_purchase,
+    _tool_set_click_rate,
     _tool_wait,
 )
 
@@ -393,6 +394,60 @@ class TestGetElementInfo:
         holder = _make_holder()
         result = _tool_get_element_info(holder, "miner")
         assert "max_count" not in result
+
+
+# ── set_click_rate ───────────────────────────────────────────────────
+
+
+class TestSetClickRate:
+    def test_set_valid_rate(self):
+        holder = _make_holder()
+        result = _tool_set_click_rate(holder, "gold", 5.0)
+        assert result["target"] == "gold"
+        assert result["cps"] == 5.0
+        assert result["active_click_rates"] == {"gold": 5.0}
+
+    def test_set_zero_clears(self):
+        holder = _make_holder()
+        _tool_set_click_rate(holder, "gold", 5.0)
+        result = _tool_set_click_rate(holder, "gold", 0)
+        assert result["active_click_rates"] == {}
+        assert "gold" not in holder._click_rates
+
+    def test_invalid_target(self):
+        holder = _make_holder()
+        result = _tool_set_click_rate(holder, "nonexistent", 1.0)
+        assert "error" in result
+
+    def test_negative_cps(self):
+        holder = _make_holder()
+        result = _tool_set_click_rate(holder, "gold", -1.0)
+        assert "error" in result
+
+    def test_clicks_applied_during_wait(self):
+        holder = _make_holder()
+        # No production, just clicking at 5 cps for 10s = 50 clicks = 50 gold
+        _tool_set_click_rate(holder, "gold", 5.0)
+        result = _tool_wait(holder, 10)
+        # Started with 100, 50 clicks * 1.0 base_value = 50 added
+        assert result["currencies"]["gold"]["current"] == 150.0
+
+    def test_click_rate_shown_in_state(self):
+        holder = _make_holder()
+        _tool_set_click_rate(holder, "gold", 3.0)
+        state = _tool_get_game_state(holder)
+        assert state["active_click_rates"] == {"gold": 3.0}
+
+    def test_no_click_rates_key_when_empty(self):
+        holder = _make_holder()
+        state = _tool_get_game_state(holder)
+        assert "active_click_rates" not in state
+
+    def test_new_game_clears_click_rates(self):
+        holder = _make_holder()
+        _tool_set_click_rate(holder, "gold", 5.0)
+        _tool_new_game(holder)
+        assert holder._click_rates == {}
 
 
 # ── create_server ────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ from idleengine.runtime import GameRuntime
 
 from idleengine.mcp.server import (
     _GameHolder,
+    _compute_effective_rate,
     _tool_click,
     _tool_get_available_purchases,
     _tool_get_element_info,
@@ -456,6 +457,92 @@ class TestSetClickRate:
         _tool_set_click_rate(holder, "gold", 5.0)
         _tool_new_game(holder)
         assert holder._click_rates == {}
+
+
+# ── effective_rate ───────────────────────────────────────────────────
+
+
+class TestEffectiveRate:
+    def test_matches_rate_with_no_clicks(self):
+        """With no click rates, effective_rate equals production rate."""
+        holder = _make_holder()
+        _tool_purchase(holder, "miner")
+        state = _tool_get_game_state(holder)
+        gold = state["currencies"]["gold"]
+        assert gold["effective_rate"] == gold["rate"]
+        assert gold["rate"] == 1.0
+
+    def test_includes_mcp_click_income(self):
+        """effective_rate includes MCP click rate * click value."""
+        holder = _make_holder()
+        # No production, just clicking at 5 cps. base_value=1.0 -> 5.0/sec
+        _tool_set_click_rate(holder, "gold", 5.0)
+        state = _tool_get_game_state(holder)
+        assert state["currencies"]["gold"]["rate"] == 0.0
+        assert state["currencies"]["gold"]["effective_rate"] == 5.0
+
+    def test_production_plus_clicks(self):
+        """effective_rate = production + click income."""
+        holder = _make_holder()
+        _tool_purchase(holder, "miner")  # 1.0/sec production
+        _tool_set_click_rate(holder, "gold", 3.0)  # 3.0/sec click income
+        state = _tool_get_game_state(holder)
+        assert state["currencies"]["gold"]["rate"] == 1.0
+        assert state["currencies"]["gold"]["effective_rate"] == 4.0
+
+    def test_effective_rate_in_wait_response(self):
+        """wait() currency summary also includes effective_rate."""
+        holder = _make_holder()
+        _tool_purchase(holder, "miner")
+        _tool_set_click_rate(holder, "gold", 2.0)
+        result = _tool_wait(holder, 1)
+        assert result["currencies"]["gold"]["rate"] == 1.0
+        assert result["currencies"]["gold"]["effective_rate"] == 3.0
+
+    def test_time_to_afford_uses_effective_rate(self):
+        """time_to_afford should factor in click income."""
+        holder = _make_holder()
+        # Spend all gold, get 1 miner (1.0/sec production)
+        for _ in range(10):
+            holder.runtime.try_purchase("miner")
+        holder.runtime.tick(0)
+        # Now 0 gold, 10 miners at 1/sec = 10/sec, cost of next miner = 10
+        # Production-only time_to_afford = 10/10 = 1.0s
+        result = _tool_get_available_purchases(holder)
+        miner = next(p for p in result["purchases"] if p["id"] == "miner")
+        assert miner["time_to_afford"] == pytest.approx(1.0)
+
+        # Add 10 cps clicking -> effective rate 20/sec -> time = 10/20 = 0.5s
+        _tool_set_click_rate(holder, "gold", 10.0)
+        result = _tool_get_available_purchases(holder)
+        miner = next(p for p in result["purchases"] if p["id"] == "miner")
+        assert miner["time_to_afford"] == pytest.approx(0.5)
+
+    def test_with_click_flat_effect(self):
+        """Click modifiers (CLICK_FLAT) should affect effective_rate."""
+        defn = GameDefinition(
+            config=GameConfig(name="Click Test"),
+            currencies=[CurrencyDef("gold", initial_value=100)],
+            elements=[
+                ElementDef(
+                    id="click_boost",
+                    display_name="Click Boost",
+                    base_cost={"gold": 10},
+                    max_count=1,
+                    effects=[
+                        Effect.static(EffectType.CLICK_FLAT, "gold", 4.0),
+                    ],
+                ),
+            ],
+            click_targets=[ClickTarget("gold", base_value=1.0)],
+        )
+        holder = _GameHolder(definition=defn, runtime=GameRuntime(defn))
+        _tool_purchase(holder, "click_boost")
+        # Click value = base(1.0) + flat(4.0) = 5.0 per click
+        _tool_set_click_rate(holder, "gold", 2.0)
+        # effective = 0 production + 2 cps * 5.0/click = 10.0/sec
+        rate = _compute_effective_rate(holder, "gold")
+        assert rate == pytest.approx(10.0)
 
 
 # ── create_server ────────────────────────────────────────────────────

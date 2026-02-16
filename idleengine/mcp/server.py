@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from idleengine._types import resolve_str
 from idleengine.definition import GameDefinition
+from idleengine.effect import EffectType
 from idleengine.runtime import GameRuntime
 
 # Maximum seconds per wait() call (24 hours)
@@ -29,6 +30,79 @@ class _GameHolder:
 
 def _round_cost(cost: dict[str, float]) -> dict[str, float]:
     return {k: round(v, 2) for k, v in cost.items()}
+
+
+def _compute_click_value(holder: _GameHolder, currency: str) -> float:
+    """Compute the value of a single click without applying it."""
+    runtime = holder.runtime
+    ct = holder.definition.get_click_target(currency)
+    if ct is None:
+        return 0.0
+
+    click_effects: list[tuple[EffectType, float]] = []
+    for edef in holder.definition.elements:
+        es = runtime.state.elements[edef.id]
+        if es.count <= 0:
+            continue
+        for eff in edef.effects:
+            if eff.type in (EffectType.CLICK_FLAT, EffectType.CLICK_MULT):
+                if eff.target == currency and eff.is_active(runtime.state):
+                    click_effects.append((eff.type, eff.resolve(runtime.state)))
+
+    return runtime.pipeline.compute_click_value(
+        currency, ct.base_value, click_effects, runtime.state
+    )
+
+
+def _compute_effective_rate(holder: _GameHolder, currency: str) -> float:
+    """Compute total effective income/sec: production + auto-clicks + MCP clicks."""
+    runtime = holder.runtime
+    state = runtime.get_state()
+    rate = state.currency_rate(currency)
+
+    # Add AUTO_CLICK income (uses base_value directly, no click modifiers)
+    ct = holder.definition.get_click_target(currency)
+    if ct is not None:
+        for edef in holder.definition.elements:
+            es = state.elements[edef.id]
+            if es.count <= 0:
+                continue
+            for eff in edef.effects:
+                if (
+                    eff.type is EffectType.AUTO_CLICK
+                    and eff.target == currency
+                    and eff.is_active(state)
+                ):
+                    rate += eff.resolve(state) * ct.base_value
+
+    # Add MCP click rate income (uses full click pipeline)
+    cps = holder._click_rates.get(currency, 0.0)
+    if cps > 0:
+        rate += cps * _compute_click_value(holder, currency)
+
+    return rate
+
+
+def _compute_time_to_afford(holder: _GameHolder, element_id: str) -> float | None:
+    """Time to afford using effective rates (production + all clicks)."""
+    cost = holder.runtime.compute_current_cost(element_id)
+    if not cost:
+        return None
+
+    state = holder.runtime.get_state()
+    max_time = 0.0
+    for cur_id, amount in cost.items():
+        current = state.currency_value(cur_id)
+        if current >= amount:
+            continue
+        eff_rate = _compute_effective_rate(holder, cur_id)
+        if eff_rate <= 0:
+            return None
+        needed = amount - current
+        t = needed / eff_rate
+        if t > max_time:
+            max_time = t
+    return max_time
 
 
 # ── Tool logic functions (testable without MCP protocol) ────────────
@@ -66,11 +140,13 @@ def _tool_get_game_state(holder: _GameHolder) -> dict[str, Any]:
     currencies = {}
     for cdef in holder.definition.currencies:
         cs = state.currencies[cdef.id]
+        eff_rate = _compute_effective_rate(holder, cdef.id)
         currencies[cdef.id] = {
             "display_name": cdef.display_name,
             "current": round(cs.current, 2),
             "total_earned": round(cs.total_earned, 2),
             "rate": round(cs.current_rate, 4),
+            "effective_rate": round(eff_rate, 4),
         }
     elements = {}
     for edef in holder.definition.elements:
@@ -98,7 +174,7 @@ def _tool_get_available_purchases(holder: _GameHolder) -> dict[str, Any]:
     purchases = holder.runtime.get_available_purchases()
     result = []
     for p in purchases:
-        time_to_afford = holder.runtime.compute_time_to_afford(p.id)
+        time_to_afford = _compute_time_to_afford(holder, p.id)
         entry: dict[str, Any] = {
             "id": p.id,
             "display_name": p.display_name,
@@ -252,9 +328,11 @@ def _tool_wait(holder: _GameHolder, seconds: float) -> dict[str, Any]:
     currencies = {}
     for cdef in holder.definition.currencies:
         cs = state.currencies[cdef.id]
+        eff_rate = _compute_effective_rate(holder, cdef.id)
         currencies[cdef.id] = {
             "current": round(cs.current, 2),
             "rate": round(cs.current_rate, 4),
+            "effective_rate": round(eff_rate, 4),
         }
 
     result: dict[str, Any] = {
